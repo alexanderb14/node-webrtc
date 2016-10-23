@@ -3,9 +3,8 @@
 var download = require('download');
 var execSync = require('child_process').execSync;
 var fs = require('fs');
-var gunzip = require('gunzip-maybe');
+var unzip = require('unzip');
 var path = require('path');
-var tar = require('tar-fs');
 var url = require('url');
 
 /**
@@ -33,11 +32,11 @@ var url = require('url');
 var defaults = {
   arch: process.arch,
   binary: {
-    host: 'https://webrtc-libraries-and-headers.s3.amazonaws.com',
+    host: 'https://s3.eu-central-1.amazonaws.com',
     module_name: 'webrtc',
     module_path: 'third_party/webrtc',
-    remote_path: 'v1/build',
-    package_name: '{module_name}-{branch}+{commit}.{platform}.{arch}.tar.gz'
+    remote_path: 'webrtc-prebuilts/v1/build',
+    package_name: 'webrtcbuilds-14726-764e364-mac-x64.zip'
   },
   buildWebRTC: false,
   buildWebRTCDependency: 'build-webrtc@0.1',
@@ -130,9 +129,7 @@ function downloadOrBuild(options) {
   return new Promise(function(resolve, reject) {
     download(url)
       .once('error', reject)
-      .pipe(gunzip())
-      .once('error', reject)
-      .pipe(tar.extract(modulePath))
+      .pipe(unzip.Extract({ path: modulePath }))
       .once('error', reject)
       .once('finish', resolve);
   }).then(function() {

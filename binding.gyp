@@ -118,7 +118,7 @@
             ],
           }, {
             'libraries': [
-              '../third_party/webrtc/lib/libwebrtc.a',
+              '../third_party/webrtc/lib/Release/libwebrtc_full.a',
             ],
           }],
         ],

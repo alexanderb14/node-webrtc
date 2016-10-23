@@ -11,7 +11,7 @@
 #include "v8.h"  // IWYU pragma: keep
 
 #include "webrtc/api/datachannelinterface.h"
-#include "webrtc/base/buffer.h"
+#include "webrtc/base/copyonwritebuffer.h"
 #include "webrtc/base/scoped_ref_ptr.h"
 
 namespace node_webrtc {
