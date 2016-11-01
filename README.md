@@ -1,26 +1,11 @@
-[![NPM](https://nodei.co/npm/wrtc.png?downloads=true&stars=true)](https://nodei.co/npm/wrtc/)
-
-[![OS X/Linus Build Status](https://secure.travis-ci.org/js-platform/node-webrtc.png?branch=develop)](http://travis-ci.org/js-platform/node-webrtc) [![Windows Build status](https://ci.appveyor.com/api/projects/status/iulc84we28o1i7b9?svg=true)](https://ci.appveyor.com/project/markandrus/node-webrtc-7bnua) [![Gratipay][wrtc-gratipay-image]][wrtc-gratipay-url]
-
 # Preamble
+
+Forked from https://github.com/modeswitch/node-webrtc
+MediaStream APIs are supported and partly implemented. Fake file audio devices are used instead of the hardware audio devices, enabling running this multiple times on one machine.
 
 This open-source project provides a native module for NodeJS that supports a subset of standards-compliant WebRTC features. Specifically, the PeerConnection and DataChannel APIs. 
 
-__MediaStream APIs are not supported__ in order to reduce the number of external dependencies and to make compilation faster and easier. In the future, support for MediaStreams may be added by proxying them over DataChannels. See [#156](https://github.com/js-platform/node-webrtc/issues/156) for more details and discussion.
-
 This project relies on precompiled WebRTC binaries.
-
-# Contributing
-
-The best way to get started is to read through the `Getting Started` and `Example` sections before having a look through the open [issues](https://github.com/modeswitch/node-webrtc/issues). Some of the issues are marked as `good first bug`, but feel free to contribute to any of the issues there, or open a new one if the thing you want to work on isn't there yet.
-
-Once you've done some hacking and you'd like to have your work merged, you'll need to make a pull request. If your patch includes code, make sure to check that all the unit tests pass, including any new tests you wrote. Finally, make sure you add yourself to the `AUTHORS` file.
-
-Whenever possible, prefer making pull requests to opening issues.
-
-### Disclaimer Regarding Bounties
-
-Some open issues have bounties associated with them. Once you patch is merged, you will need to coordinate with the person who posted the bounty in order to claim it.
 
 # Getting Started
 
@@ -64,14 +49,14 @@ Some of these libraries may be installed by default. Package names for these lib
 The easiest way to install is via npm:
 
 ````
-npm install wrtc
+npm install wrtc-full
 ````
 
 If you want to work from source:
 
 ````
-git clone https://github.com/js-platform/node-webrtc.git
-cd node-webrtc
+git clone https://github.com/alexanderb14/node-webrtc-full
+cd node-webrtc-full
 npm install
 ````
 
