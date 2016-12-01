@@ -3,18 +3,18 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "peerconnection.h"
 
-#include "webrtc/api/mediaconstraintsinterface.h"
 #include "webrtc/api/test/fakeconstraints.h"
-#include "webrtc/base/refcount.h"
+#include "webrtc/modules/audio_device/dummy/file_audio_device_factory.h"
 
 #include "common.h"
-#include "create-answer-observer.h"
-#include "create-offer-observer.h"
+#include "mediastream.h"
 #include "datachannel.h"
-#include "rtcstatsresponse.h"
+#include "create-offer-observer.h"
+#include "create-answer-observer.h"
 #include "set-local-description-observer.h"
 #include "set-remote-description-observer.h"
-#include "stats-observer.h"
+
+#include <iostream>
 
 using node_webrtc::PeerConnection;
 using v8::External;
@@ -33,33 +33,40 @@ Nan::Persistent<Function> PeerConnection::constructor;
 rtc::Thread* PeerConnection::_signalingThread;
 rtc::Thread* PeerConnection::_workerThread;
 
-//
-// PeerConnection
-//
 
+// PeerConnection constructor/destructor
 PeerConnection::PeerConnection()
-: loop(uv_default_loop()) {
+  : loop(uv_default_loop()) {
   _createOfferObserver = new rtc::RefCountedObject<CreateOfferObserver>(this);
   _createAnswerObserver = new rtc::RefCountedObject<CreateAnswerObserver>(this);
   _setLocalDescriptionObserver = new rtc::RefCountedObject<SetLocalDescriptionObserver>(this);
   _setRemoteDescriptionObserver = new rtc::RefCountedObject<SetRemoteDescriptionObserver>(this);
 
-  // FIXME: don't hardcode this, read from info instead
-  webrtc::PeerConnectionInterface::IceServer iceServer;
-  iceServer.uri = "stun:stun.l.google.com:19302";
-  _iceServers.push_back(iceServer);
+  webrtc::FileAudioDeviceFactory::SetFilenamesToUse("/devel/speech.pcm", "/deve/out.pcm");
 
-  webrtc::PeerConnectionInterface::RTCConfiguration configuration;
-  configuration.servers = _iceServers;
+  webrtc::PeerConnectionInterface::RTCConfiguration config;
+  webrtc::PeerConnectionInterface::IceServer server;
+  server.uri = "stun:stun.l.google.com:19302";
+  config.servers.push_back(server);
 
   webrtc::FakeConstraints constraints;
-  constraints.AddOptional(webrtc::MediaConstraintsInterface::kEnableDtlsSrtp, webrtc::MediaConstraintsInterface::kValueTrue);
-  // FIXME: crashes without these constraints, why?
-  constraints.AddMandatory(webrtc::MediaConstraintsInterface::kOfferToReceiveAudio, webrtc::MediaConstraintsInterface::kValueFalse);
-  constraints.AddMandatory(webrtc::MediaConstraintsInterface::kOfferToReceiveVideo, webrtc::MediaConstraintsInterface::kValueFalse);
+  constraints.AddOptional(webrtc::MediaConstraintsInterface::kEnableDtlsSrtp, "true");
 
-  _jinglePeerConnectionFactory = webrtc::CreatePeerConnectionFactory(_workerThread, _signalingThread, nullptr, nullptr, nullptr);
-  _jinglePeerConnection = _jinglePeerConnectionFactory->CreatePeerConnection(configuration, &constraints, nullptr, nullptr, this);
+  _peer_connection_factory  = webrtc::CreatePeerConnectionFactory(
+    _workerThread, 
+    _signalingThread, 
+    nullptr, 
+    nullptr, 
+    nullptr);
+  ASSERT(_peer_connection_factory.get() != NULL);
+
+  _peer_connection = _peer_connection_factory->CreatePeerConnection(
+    config, 
+    &constraints, 
+    NULL, 
+    NULL, 
+    this);
+  ASSERT(_peer_connection.get() != NULL);
 
   uv_mutex_init(&lock);
   uv_async_init(loop, &async, reinterpret_cast<uv_async_cb>(Run));
@@ -69,8 +76,8 @@ PeerConnection::PeerConnection()
 
 PeerConnection::~PeerConnection() {
   TRACE_CALL;
-  _jinglePeerConnection = nullptr;
-  _jinglePeerConnectionFactory = nullptr;
+  _peer_connection = nullptr;
+  _peer_connection_factory = nullptr;
   TRACE_END;
 }
 
@@ -88,6 +95,8 @@ void PeerConnection::QueueEvent(AsyncEventType type, void* data) {
 }
 
 void PeerConnection::Run(uv_async_t* handle, int status) {
+  TRACE_CALL;
+
   Nan::HandleScope scope;
 
   PeerConnection* self = static_cast<PeerConnection*>(handle->data);
@@ -95,7 +104,7 @@ void PeerConnection::Run(uv_async_t* handle, int status) {
   Local<Object> pc = self->handle();
   bool do_shutdown = false;
 
-  while (true) {
+ while (true) {
     uv_mutex_lock(&self->lock);
     bool empty = self->_events.empty();
     if (empty) {
@@ -119,14 +128,6 @@ void PeerConnection::Run(uv_async_t* handle, int status) {
       Local<Value> argv[1];
       argv[0] = Nan::New(data->desc.c_str()).ToLocalChecked();
       Nan::MakeCallback(pc, callback, 1, argv);
-    } else if (PeerConnection::GET_STATS_SUCCESS & evt.type) {
-      PeerConnection::GetStatsEvent* data = static_cast<PeerConnection::GetStatsEvent*>(evt.data);
-      Nan::Callback *callback = data->callback;
-      Local<Value> cargv[1];
-      cargv[0] = Nan::New<External>(static_cast<void*>(&data->reports));
-      Local<Value> argv[1];
-      argv[0] = Nan::New(RTCStatsResponse::constructor)->NewInstance(1, cargv);
-      callback->Call(1, argv);
     } else if (PeerConnection::VOID_EVENT & evt.type) {
       Local<Function> callback = Local<Function>::Cast(pc->Get(Nan::New("onsuccess").ToLocalChecked()));
       Local<Value> argv[1];
@@ -168,17 +169,6 @@ void PeerConnection::Run(uv_async_t* handle, int status) {
         argv[2] = Nan::New<Integer>(data->sdpMLineIndex);
         Nan::MakeCallback(pc, callback, 3, argv);
       }
-    } else if (PeerConnection::NOTIFY_DATA_CHANNEL & evt.type) {
-      PeerConnection::DataChannelEvent* data = static_cast<PeerConnection::DataChannelEvent*>(evt.data);
-      DataChannelObserver* observer = data->observer;
-      Local<Value> cargv[1];
-      cargv[0] = Nan::New<External>(static_cast<void*>(observer));
-      Local<Value> dc = Nan::New(DataChannel::constructor)->NewInstance(1, cargv);
-
-      Local<Function> callback = Local<Function>::Cast(pc->Get(Nan::New("ondatachannel").ToLocalChecked()));
-      Local<Value> argv[1];
-      argv[0] = dc;
-      Nan::MakeCallback(pc, callback, 1, argv);
     }
   }
 
@@ -189,26 +179,42 @@ void PeerConnection::Run(uv_async_t* handle, int status) {
   TRACE_END;
 }
 
-void PeerConnection::OnError() {
-  TRACE_CALL;
-  TRACE_END;
-}
-
-void PeerConnection::OnSignalingChange(webrtc::PeerConnectionInterface::SignalingState new_state) {
+// PeerConnectionObserver implementation
+void PeerConnection::OnSignalingChange(
+    webrtc::PeerConnectionInterface::SignalingState new_state) {
   TRACE_CALL;
   StateEvent* data = new StateEvent(static_cast<uint32_t>(new_state));
   QueueEvent(PeerConnection::SIGNALING_STATE_CHANGE, static_cast<void*>(data));
   TRACE_END;
 }
 
-void PeerConnection::OnIceConnectionChange(webrtc::PeerConnectionInterface::IceConnectionState new_state) {
+void PeerConnection::OnAddStream(
+    webrtc::PeerConnectionInterface::SignalingState new_state) {
+  TRACE_CALL;
+  TRACE_END;
+}
+
+void PeerConnection::OnRemoveStream(
+    webrtc::PeerConnectionInterface::SignalingState new_state) {
+  TRACE_CALL;
+  TRACE_END;
+}
+
+void PeerConnection::OnRenegotiationNeeded() {
+  TRACE_CALL;
+  TRACE_END;
+}
+
+void PeerConnection::OnIceConnectionChange(
+    webrtc::PeerConnectionInterface::IceConnectionState new_state) {
   TRACE_CALL;
   StateEvent* data = new StateEvent(static_cast<uint32_t>(new_state));
   QueueEvent(PeerConnection::ICE_CONNECTION_STATE_CHANGE, static_cast<void*>(data));
   TRACE_END;
 }
 
-void PeerConnection::OnIceGatheringChange(webrtc::PeerConnectionInterface::IceGatheringState new_state) {
+void PeerConnection::OnIceGatheringChange(
+    webrtc::PeerConnectionInterface::IceGatheringState new_state) {
   TRACE_CALL;
   StateEvent* data = new StateEvent(static_cast<uint32_t>(new_state));
   QueueEvent(PeerConnection::ICE_GATHERING_STATE_CHANGE, static_cast<void*>(data));
@@ -222,29 +228,12 @@ void PeerConnection::OnIceCandidate(const webrtc::IceCandidateInterface* candida
   TRACE_END;
 }
 
-void PeerConnection::OnDataChannel(webrtc::DataChannelInterface* jingle_data_channel) {
-  TRACE_CALL;
-  DataChannelObserver* observer = new DataChannelObserver(jingle_data_channel);
-  PeerConnection::DataChannelEvent* data = new PeerConnection::DataChannelEvent(observer);
-  QueueEvent(PeerConnection::NOTIFY_DATA_CHANNEL, static_cast<void*>(data));
-  TRACE_END;
-}
-
-void PeerConnection::OnAddStream(webrtc::MediaStreamInterface* stream) {
+void PeerConnection::OnIceConnectionReceivingChange(bool receiving) {
   TRACE_CALL;
   TRACE_END;
 }
 
-void PeerConnection::OnRemoveStream(webrtc::MediaStreamInterface* stream) {
-  TRACE_CALL;
-  TRACE_END;
-}
-
-void PeerConnection::OnRenegotiationNeeded() {
-  TRACE_CALL;
-  TRACE_END;
-}
-
+// NodeJS Wrapping
 NAN_METHOD(PeerConnection::New) {
   TRACE_CALL;
 
@@ -264,7 +253,7 @@ NAN_METHOD(PeerConnection::CreateOffer) {
 
   PeerConnection* self = Nan::ObjectWrap::Unwrap<PeerConnection>(info.This());
 
-  self->_jinglePeerConnection->CreateOffer(self->_createOfferObserver, nullptr);
+  self->_peer_connection->CreateOffer(self->_createOfferObserver, nullptr);
 
   TRACE_END;
   info.GetReturnValue().Set(Nan::Undefined());
@@ -275,7 +264,7 @@ NAN_METHOD(PeerConnection::CreateAnswer) {
 
   PeerConnection* self = Nan::ObjectWrap::Unwrap<PeerConnection>(info.This());
 
-  self->_jinglePeerConnection->CreateAnswer(self->_createAnswerObserver, nullptr);
+  self->_peer_connection->CreateAnswer(self->_createAnswerObserver, nullptr);
 
   TRACE_END;
   info.GetReturnValue().Set(Nan::Undefined());
@@ -291,10 +280,14 @@ NAN_METHOD(PeerConnection::SetLocalDescription) {
 
   std::string type = *_type;
   std::string sdp = *_sdp;
+  std::cout << "local^^^^^^^^^^^^^ " << "type " << type << std::endl;
+  std::cout << "local^^^^^^^^^^^^^ " << "sdp " << sdp << std::endl;
+
+
   webrtc::SdpParseError error;
   webrtc::SessionDescriptionInterface* sdi = webrtc::CreateSessionDescription(type, sdp, &error);
 
-  self->_jinglePeerConnection->SetLocalDescription(self->_setLocalDescriptionObserver, sdi);
+  self->_peer_connection->SetLocalDescription(self->_setLocalDescriptionObserver, sdi);
 
   TRACE_END;
   info.GetReturnValue().Set(Nan::Undefined());
@@ -310,11 +303,20 @@ NAN_METHOD(PeerConnection::SetRemoteDescription) {
 
   std::string type = *_type;
   std::string sdp = *_sdp;
+  std::cout << "remote^^^^^^^^^^^^^ " << "type " << type << std::endl;
+  std::cout << "remote^^^^^^^^^^^^^ " << "sdp " << sdp << std::endl;
+
   webrtc::SdpParseError error;
   webrtc::SessionDescriptionInterface* sdi = webrtc::CreateSessionDescription(type, sdp, &error);
 
-  self->_jinglePeerConnection->SetRemoteDescription(self->_setRemoteDescriptionObserver, sdi);
+  self->_peer_connection->SetRemoteDescription(self->_setRemoteDescriptionObserver, sdi);
 
+  TRACE_END;
+  info.GetReturnValue().Set(Nan::Undefined());
+}
+
+NAN_METHOD(PeerConnection::UpdateIce) {
+  TRACE_CALL;
   TRACE_END;
   info.GetReturnValue().Set(Nan::Undefined());
 }
@@ -327,14 +329,16 @@ NAN_METHOD(PeerConnection::AddIceCandidate) {
 
   String::Utf8Value _candidate(sdp->Get(Nan::New("candidate").ToLocalChecked())->ToString());
   std::string candidate = *_candidate;
+
   String::Utf8Value _sipMid(sdp->Get(Nan::New("sdpMid").ToLocalChecked())->ToString());
   std::string sdp_mid = *_sipMid;
+
   uint32_t sdp_mline_index = sdp->Get(Nan::New("sdpMLineIndex").ToLocalChecked())->Uint32Value();
 
   webrtc::SdpParseError sdpParseError;
   webrtc::IceCandidateInterface* ci = webrtc::CreateIceCandidate(sdp_mid, sdp_mline_index, candidate, &sdpParseError);
 
-  if (self->_jinglePeerConnection->AddIceCandidate(ci)) {
+  if (self->_peer_connection->AddIceCandidate(ci)) {
     self->QueueEvent(PeerConnection::ADD_ICE_CANDIDATE_SUCCESS, static_cast<void*>(nullptr));
   } else {
     PeerConnection::ErrorEvent* data = new PeerConnection::ErrorEvent(std::string("Failed to set ICE candidate."));
@@ -390,7 +394,7 @@ NAN_METHOD(PeerConnection::CreateDataChannel) {
     }
   }
 
-  rtc::scoped_refptr<webrtc::DataChannelInterface> data_channel_interface = self->_jinglePeerConnection->CreateDataChannel(*label, &dataChannelInit);
+  rtc::scoped_refptr<webrtc::DataChannelInterface> data_channel_interface = self->_peer_connection->CreateDataChannel(*label, &dataChannelInit);
   DataChannelObserver* observer = new DataChannelObserver(data_channel_interface);
 
   Local<Value> cargv[1];
@@ -401,40 +405,25 @@ NAN_METHOD(PeerConnection::CreateDataChannel) {
   info.GetReturnValue().Set(dc);
 }
 
-NAN_METHOD(PeerConnection::GetStats) {
+NAN_METHOD(PeerConnection::AddStream) {
   TRACE_CALL;
 
   PeerConnection* self = Nan::ObjectWrap::Unwrap<PeerConnection>(info.This());
+  node_webrtc::MediaStream* ms = Nan::ObjectWrap::Unwrap<MediaStream>( info[0]->ToObject() );
 
-  Nan::Callback *onSuccess = new Nan::Callback(info[0].As<Function>());
-  Nan::Callback *onFailure = new Nan::Callback(info[1].As<Function>());
-  rtc::scoped_refptr<StatsObserver> statsObserver =
-     new rtc::RefCountedObject<StatsObserver>(self, onSuccess);
-
-  if (!self->_jinglePeerConnection->GetStats(statsObserver, nullptr,
-    webrtc::PeerConnectionInterface::kStatsOutputLevelStandard)) {
-    // TODO: Include error?
-    Local<Value> argv[] = {
-      Nan::Null()
-    };
-    onFailure->Call(1, argv);
-  }
+  self->_peer_connection->AddStream(ms->GetInterface());
 
   TRACE_END;
   info.GetReturnValue().Set(Nan::Undefined());
-}
 
-NAN_METHOD(PeerConnection::UpdateIce) {
-  TRACE_CALL;
-  TRACE_END;
-  info.GetReturnValue().Set(Nan::Undefined());
+  self->QueueEvent(PeerConnection::VOID_EVENT, static_cast<void*>(nullptr));
 }
 
 NAN_METHOD(PeerConnection::Close) {
   TRACE_CALL;
 
   PeerConnection* self = Nan::ObjectWrap::Unwrap<PeerConnection>(info.This());
-  self->_jinglePeerConnection->Close();
+  self->_peer_connection->Close();
 
   TRACE_END;
   info.GetReturnValue().Set(Nan::Undefined());
@@ -444,7 +433,7 @@ NAN_GETTER(PeerConnection::GetLocalDescription) {
   TRACE_CALL;
 
   PeerConnection* self = Nan::ObjectWrap::Unwrap<PeerConnection>(info.Holder());
-  const webrtc::SessionDescriptionInterface* sdi = self->_jinglePeerConnection->local_description();
+  const webrtc::SessionDescriptionInterface* sdi = self->_peer_connection->local_description();
 
   Handle<Value> value;
   if (nullptr == sdi) {
@@ -461,62 +450,6 @@ NAN_GETTER(PeerConnection::GetLocalDescription) {
 #else
   info.GetReturnValue().Set(value);
 #endif
-}
-
-NAN_GETTER(PeerConnection::GetRemoteDescription) {
-  TRACE_CALL;
-
-  PeerConnection* self = Nan::ObjectWrap::Unwrap<PeerConnection>(info.Holder());
-  const webrtc::SessionDescriptionInterface* sdi = self->_jinglePeerConnection->remote_description();
-
-  Handle<Value> value;
-  if (nullptr == sdi) {
-    value = Nan::Null();
-  } else {
-    std::string sdp;
-    sdi->ToString(&sdp);
-    value = Nan::New(sdp.c_str()).ToLocalChecked();
-  }
-
-  TRACE_END;
-#if NODE_MAJOR_VERSION == 0
-  info.GetReturnValue().Set(Nan::New(value));
-#else
-  info.GetReturnValue().Set(value);
-#endif
-}
-
-NAN_GETTER(PeerConnection::GetSignalingState) {
-  TRACE_CALL;
-
-  PeerConnection* self = Nan::ObjectWrap::Unwrap<PeerConnection>(info.Holder());
-
-  webrtc::PeerConnectionInterface::SignalingState state = self->_jinglePeerConnection->signaling_state();
-
-  TRACE_END;
-  info.GetReturnValue().Set(Nan::New<Number>(state));
-}
-
-NAN_GETTER(PeerConnection::GetIceConnectionState) {
-  TRACE_CALL;
-
-  PeerConnection* self = Nan::ObjectWrap::Unwrap<PeerConnection>(info.Holder());
-
-  webrtc::PeerConnectionInterface::IceConnectionState state = self->_jinglePeerConnection->ice_connection_state();
-
-  TRACE_END;
-  info.GetReturnValue().Set(Nan::New<Number>(state));
-}
-
-NAN_GETTER(PeerConnection::GetIceGatheringState) {
-  TRACE_CALL;
-
-  PeerConnection* self = Nan::ObjectWrap::Unwrap<PeerConnection>(info.Holder());
-
-  webrtc::PeerConnectionInterface::IceGatheringState state = self->_jinglePeerConnection->ice_gathering_state();
-
-  TRACE_END;
-  info.GetReturnValue().Set(Nan::New<Number>(static_cast<uint32_t>(state)));
 }
 
 NAN_SETTER(PeerConnection::ReadOnly) {
@@ -535,17 +468,12 @@ void PeerConnection::Init(rtc::Thread* signalingThread, rtc::Thread* workerThrea
   Nan::SetPrototypeMethod(tpl, "createAnswer", CreateAnswer);
   Nan::SetPrototypeMethod(tpl, "setLocalDescription", SetLocalDescription);
   Nan::SetPrototypeMethod(tpl, "setRemoteDescription", SetRemoteDescription);
-  Nan::SetPrototypeMethod(tpl, "getStats", GetStats);
   Nan::SetPrototypeMethod(tpl, "updateIce", UpdateIce);
   Nan::SetPrototypeMethod(tpl, "addIceCandidate", AddIceCandidate);
-  Nan::SetPrototypeMethod(tpl, "createDataChannel", CreateDataChannel);
-  Nan::SetPrototypeMethod(tpl, "close", Close);
+
+  Nan::SetPrototypeMethod(tpl, "addStream", AddStream);
 
   Nan::SetAccessor(tpl->InstanceTemplate(), Nan::New("localDescription").ToLocalChecked(), GetLocalDescription, ReadOnly);
-  Nan::SetAccessor(tpl->InstanceTemplate(), Nan::New("remoteDescription").ToLocalChecked(), GetRemoteDescription, ReadOnly);
-  Nan::SetAccessor(tpl->InstanceTemplate(), Nan::New("signalingState").ToLocalChecked(), GetSignalingState, ReadOnly);
-  Nan::SetAccessor(tpl->InstanceTemplate(), Nan::New("iceConnectionState").ToLocalChecked(), GetIceConnectionState, ReadOnly);
-  Nan::SetAccessor(tpl->InstanceTemplate(), Nan::New("iceGatheringState").ToLocalChecked(), GetIceGatheringState, ReadOnly);
 
   constructor.Reset(tpl->GetFunction());
   exports->Set(Nan::New("PeerConnection").ToLocalChecked(), tpl->GetFunction());

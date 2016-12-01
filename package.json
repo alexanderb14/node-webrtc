@@ -1,19 +1,19 @@
 {
-  "name": "wrtc",
+  "name": "wrtc-full",
   "description": "Standards-compliant WebRTC implementation for Node",
   "keywords": [
     "webrtc",
     "p2p",
     "peer"
   ],
-  "version": "0.0.62",
+  "version": "0.0.67",
   "author": "Alan K <ack@modeswitch.org> (http://blog.modeswitch.org)",
   "homepage": "http://js-platform.github.io/node-webrtc/",
   "bugs": "https://github.com/js-platform/node-webrtc/issues",
   "license": "BSD",
   "repository": {
     "type": "git",
-    "url": "http://github.com/js-platform/node-webrtc.git"
+    "url": "https://github.com/alexanderb14/node-webrtc-mediastream"
   },
   "main": "lib/index.js",
   "browser": "lib/browser.js",
@@ -22,7 +22,7 @@
     "module_path": "./build/{module_name}/v{version}/{configuration}/{node_abi}-{platform}-{arch}/",
     "remote_path": "./{module_name}/v{version}/{configuration}/",
     "package_name": "{node_abi}-{platform}-{arch}.tar.gz",
-    "host": "https://node-webrtc.s3.amazonaws.com"
+    "host": "https://node-webrtc-full.s3.amazonaws.com"
   },
   "engines": {
     "node": ">=4.0.0"
@@ -39,7 +39,9 @@
     "node-static-alias": "^0.1.2",
     "simple-peer": "^5.0.0",
     "tape": "~2.4.2",
-    "ws": "^1.1.0"
+    "ws": "^1.1.0",
+    "websocket": "^1.0.23",
+    "node-uuid": "^1.4.7"
   },
   "scripts": {
     "download-webrtc-libraries-and-headers": "node scripts/download-webrtc-libraries-and-headers.js",

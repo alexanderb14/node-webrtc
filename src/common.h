@@ -4,13 +4,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "nan.h"
 
 #define WARN(msg) fprintf(stdout, "\033[01;33m native:%s \033[00m\n", msg)
 #define ERROR(msg) fprintf(stdout, "\033[01;32m native:%s \033[00m\n", msg)
 #define INFO(msg) fprintf(stdout, "\033[01;34m native:%s \033[00m\n", msg)
 
-#if defined(TRACING)
+//#if defined(TRACING)
 
 #define TRACE(msg) printf("   TRACE: %s\n", msg)
 #define TRACE_S(msg, s) printf("   TRACE: %s : %s\n", msg, s)
@@ -23,20 +22,20 @@
 #define TRACE_CALL_P(p1) printf("-> TRACE: Call::%s(%lx)\n", __PRETTY_FUNCTION__, p1)
 #define TRACE_END printf("<- Call::%s\n", __PRETTY_FUNCTION__)
 
-#else
-
-#define TRACE(msg)
-#define TRACE_S(msg, s)
-#define TRACE_I(msg, i)
-#define TRACE_U(msg, u)
-#define TRACE_X(msg, x)
-#define TRACE_PTR(msg, x)
-#define TRACE_CALL
-#define TRACE_CALL_I(p1)
-#define TRACE_CALL_P(p1)
-#define TRACE_END
-
-#endif
+//#else
+//
+//#define TRACE(msg)
+//#define TRACE_S(msg, s)
+//#define TRACE_I(msg, i)
+//#define TRACE_U(msg, u)
+//#define TRACE_X(msg, x)
+//#define TRACE_PTR(msg, x)
+//#define TRACE_CALL
+//#define TRACE_CALL_I(p1)
+//#define TRACE_CALL_P(p1)
+//#define TRACE_END
+//
+//#endif
 
 #define THROW_TYPE_ERROR(MSG) \
   return Nan::ThrowTypeError(MSG);

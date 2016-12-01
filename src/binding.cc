@@ -7,9 +7,9 @@
 #include "webrtc/base/thread.h"
 
 #include "peerconnection.h"
-#include "datachannel.h"
-#include "rtcstatsreport.h"
-#include "rtcstatsresponse.h"
+#include "mediadevices.h"
+#include "mediastreamtrack.h"
+#include "mediastream.h"
 
 using v8::Handle;
 using v8::Object;
@@ -41,9 +41,13 @@ void dispose(void* args) {
 void init(Handle<Object> exports) {
   setup(&signalingThread, &workerThread);
   node_webrtc::PeerConnection::Init(&signalingThread, &workerThread, exports);
-  node_webrtc::DataChannel::Init(exports);
-  node_webrtc::RTCStatsReport::Init(exports);
-  node_webrtc::RTCStatsResponse::Init(exports);
+  node_webrtc::MediaDevices::Init(&signalingThread, &workerThread, exports);
+  node_webrtc::MediaStreamTrack::Init(exports);
+  node_webrtc::MediaStream::Init(exports);
+
+//  node_webrtc::DataChannel::Init(exports);
+//  node_webrtc::RTCStatsReport::Init(exports);
+//  node_webrtc::RTCStatsResponse::Init(exports);
   node::AtExit(dispose);
 }
 

@@ -55,6 +55,7 @@
           '-Wno-c++0x-extensions',
           '-Wno-c++11-extensions',
           '-stdlib=libc++',
+          '-Wno-overloaded-virtual',
         ],
         'OTHER_LDFLAGS': [
           '-stdlib=libc++',
@@ -118,7 +119,7 @@
             ],
           }, {
             'libraries': [
-              '../third_party/webrtc/lib/Release/libwebrtc_full.a',
+              '../third_party/webrtc/lib/Debug/libwebrtc_full.a',
             ],
           }],
         ],
@@ -128,6 +129,9 @@
         'src/create-answer-observer.cc',
         'src/create-offer-observer.cc',
         'src/datachannel.cc',
+        'src/mediadevices.cc',
+        'src/mediastream.cc',
+        'src/mediastreamtrack.cc',
         'src/peerconnection.cc',
         'src/rtcstatsreport.cc',
         'src/rtcstatsresponse.cc',
