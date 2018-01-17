@@ -42,7 +42,7 @@ PeerConnection::PeerConnection()
   _setLocalDescriptionObserver = new rtc::RefCountedObject<SetLocalDescriptionObserver>(this);
   _setRemoteDescriptionObserver = new rtc::RefCountedObject<SetRemoteDescriptionObserver>(this);
 
-  webrtc::FileAudioDeviceFactory::SetFilenamesToUse("/devel/speech.pcm", "/deve/out.pcm");
+  webrtc::FileAudioDeviceFactory::SetFilenamesToUse("/devel/speech.pcm", "/devel/out.pcm");
 
   webrtc::PeerConnectionInterface::RTCConfiguration config;
   webrtc::PeerConnectionInterface::IceServer server;
